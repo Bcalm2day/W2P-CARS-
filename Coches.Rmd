@@ -1,0 +1,181 @@
+---
+title: "Coches"
+output:
+  html_document: 
+    df_print: kable
+runtime: shiny
+date: "2023-02-21"
+---
+
+# This is a car finder database for petrolheads
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+# SE CARGA LA BASE DE DATOS ORIGINAL A LA CUAL SE HA AÑADIDO PREVIAMENTE LA COLUMNA #51 (RELACION PESO-POTENCIA) DESDE EXCEL Y SE CAMBIA A "Naturally Aspirated" LOS VALORES DE LA COLUMNA "BOOST TYPE" SIN TURBO.
+suppressWarnings(library(readxl))
+suppressWarnings(coches<-read_excel("C:/Users/dr0070/Desktop/MASTER/DATASETS/Car2DB_eng_cut.xlsx"))
+# SE TRANSFORMA LA TABLA DE DATOS EN UN DATA FRAME
+coches<-as.data.frame(coches)
+```
+
+```{r echo=FALSE}
+# SE DETECTAN LOS DATOS AUSENTES
+# sapply(coches,function(x) sum(is.na(x)))
+```
+
+```{r echo=FALSE}
+# SE CAMBIA EL VALOR DE LOS DATOS AUSENTES POR CEROS
+for(columna in 1:59)
+if(sum(is.na(coches[,columna])!=0)){
+  coches[is.na(coches[,columna]),columna]<-0
+}
+# SE VUELVE A COMPROBAR EL NÚMERO DE DATOS AUSENTES
+# sapply(coches,function(x) sum(is.na(x)))
+```
+
+```{r echo=FALSE}
+# SE HACE UN BUCLE PARA TRANSFORMAR LAS VARIABLES DE TIPO CARACTER EN FACTORES
+for (columna in 1:59) {
+  if(is.character(coches[,columna])){
+    coches[,columna]<-as.factor(coches[,columna])
+  }
+}
+```
+
+```{r echo=FALSE}
+# SE HACE UN BUCLE PARA TRANSFORMAR LOS DATOS NUMERICOS QUE DEBEN SER DE TIPO ENTERO (PESAN MENOS QUE LOS NUMERICOS DE DOBLE PRECISION)
+for (columna in c(1:27,30:44,46:49,52)) {
+  if(is.double(coches[,columna])){
+    coches[,columna]<-as.integer(coches[,columna])
+  }
+}
+```
+
+```{r echo=FALSE}
+# SE DEJAN CON DOS DECIMALES LOS VALORES DE LA VARIABLE PESO-POTENCIA
+coches$`Weight to power ratio`<-round(coches$`Weight to power ratio`,digits = 2)
+```
+
+```{r echo=FALSE}
+# SE LIMPIAN LOS DATOS QUE NO TIENEN PESO O POTENCIA
+cochesfiltrados<-coches[coches$`Weight to power ratio`!=0,]
+
+# SE LIMPIAN LOS DATOS QUE NO VELOCIDAD MAXIMA
+cochesfiltrados2<-cochesfiltrados[cochesfiltrados$`Max speed [km/h]`!=0,]
+
+#SE LIMPIAN LOS DATOS QUE NO TIENEN ACELERACION 0-100
+cochesfiltrados3<-cochesfiltrados2[cochesfiltrados2$`Acceleration (0-100 km/h) [second]`!=0,]
+
+# SE ORDENA EL DATA FRAME POR LA VARIABLE PESO-POTENCIA DE FORMA ASCENDENTE
+consulta<-order(cochesfiltrados3$`Weight to power ratio`,decreasing = F)
+```
+
+```{r echo=FALSE}
+# SE GENERA LA TABLA FINAL CON LOS RESULTADOS A MOSTRAR
+tablafinal<-head(cochesfiltrados3[consulta,c(2,3,8,5,51,38,36,35,37,31,12,44,42,40,48)],100000)
+```
+
+```{r, echo=FALSE}
+library(shiny)
+
+fluidPage(
+  sidebarLayout(
+    sidebarPanel(
+
+      sliderInput("power","Select the engine power [BHP]",min=0, max=1000, value=c(100,200), step = 10),
+
+      sliderInput("weight", "Select the weight [KGS]", min=500, max=2000, value=c(900,1200)),
+
+      sliderInput("torque", "Select the engine torque [NM]", min=0, max=1000, value=c(100,300)),
+
+      checkboxGroupInput("transm","Select transmission", choices = c("Automatic", "Continuously variable transmission (CVT)", "Electronic", "Manual"), selected = "Manual"),
+      
+      checkboxGroupInput("traction", "Select traction wheels", choices = c("All wheel drive (AWD)", "Four wheel drive (4WD)", "Front wheel drive","Rear wheel drive"), selected = "Front wheel drive"),
+      
+      checkboxGroupInput("boost", "Select the air induction type", choices = c("Biturbo", "Compressor", "Naturally Aspirated", "Triple turbo",  "Turbine + compressor", "Turbo", "Twin-scroll"), selected = "Naturally Aspirated"),
+      
+      checkboxGroupInput("fuel","Select the fuel type", choices = c("CNG", "Disel", "Electric", "Gasoline", "Gasoline, CNG", "Hybrid"), selected = "Gasoline"),
+                                                                               
+      numericInput("maxRPMbhp", "Select the max power RPM", value = 5500),
+
+      numericInput("year", "Production start from year", value = 1980),
+      
+      selectInput("x","Select the variable x for the graphic",choices = c("Weight to power ratio", "Engine power [bhp]", "Max Power [RPM]", "Max torque [Nm]", "Max Torque [RPM]", "Curb weight [kg]"),selected = "Weight to power ratio"),
+      
+      selectInput("y","Select the variable y for the graphic",choices = c("Weight to power ratio", "Engine power [bhp]", "Max Power [RPM]", "Max torque [Nm]", "Max Torque [RPM]", "Curb weight [kg]"),selected = "Curb weight [kg]")
+      
+),
+
+    mainPanel(
+      renderTable({
+        head(tablafinal[tablafinal$`Engine power [bhp]` > input$power[1] & 
+                    tablafinal$`Engine power [bhp]` < input$power[2] &
+                    tablafinal$`Curb weight [kg]` > input$weight[1] & 
+                    tablafinal$`Curb weight [kg]` < input$weight[2] &
+                    tablafinal$`Max torque [Nm]` > input$torque[1] &
+                    tablafinal$`Max torque [Nm]` < input$torque [2] &
+                    tablafinal$`Gearbox type` %in% input$transm &
+                    tablafinal$`Drive wheels` %in% input$traction &
+                    tablafinal$`Boost type` %in% input$boost & 
+                    tablafinal$`Engine type` %in% input$fuel &   
+                    tablafinal$`Max Power [RPM]` >= input$maxRPMbhp &
+                    tablafinal$`Year from (Generation)` > input$year
+                    ,],10)
+      }
+      ,striped = T, spacing = "xs", bordered = T, align = "l"),
+      
+      renderPlot({plot(head(tablafinal[tablafinal$`Engine power [bhp]` > input$power[1] & 
+                    tablafinal$`Engine power [bhp]` < input$power[2] &
+                    tablafinal$`Curb weight [kg]` > input$weight[1] & 
+                    tablafinal$`Curb weight [kg]` < input$weight[2] &
+                    tablafinal$`Max torque [Nm]` > input$torque[1] &
+                    tablafinal$`Max torque [Nm]` < input$torque [2] &
+                    tablafinal$`Gearbox type` %in% input$transm &
+                    tablafinal$`Drive wheels` %in% input$traction &
+                    tablafinal$`Boost type` %in% input$boost & 
+                    tablafinal$`Engine type` %in% input$fuel &   
+                    tablafinal$`Max Power [RPM]` >= input$maxRPMbhp &
+                    tablafinal$`Year from (Generation)` > input$year
+                    ,],10)[,input$x],
+                    head(tablafinal[tablafinal$`Engine power [bhp]` > input$power[1] & 
+                    tablafinal$`Engine power [bhp]` < input$power[2] &
+                    tablafinal$`Curb weight [kg]` > input$weight[1] & 
+                    tablafinal$`Curb weight [kg]` < input$weight[2] &
+                    tablafinal$`Max torque [Nm]` > input$torque[1] &
+                    tablafinal$`Max torque [Nm]` < input$torque [2] &
+                    tablafinal$`Gearbox type` %in% input$transm &
+                    tablafinal$`Drive wheels` %in% input$traction &
+                    tablafinal$`Boost type` %in% input$boost & 
+                    tablafinal$`Engine type` %in% input$fuel &   
+                    tablafinal$`Max Power [RPM]` >= input$maxRPMbhp &
+                    tablafinal$`Year from (Generation)` > input$year
+                    ,],10)[,input$y], 
+                    col= tablafinal$`Engine type`, 
+                    pch = 16, 
+                    cex = 2, 
+                    xlab = input$x, 
+                    ylab = input$y,
+                    las = 1,
+                    main = paste("Relation between ", input$x," and ", input$y)
+                    )
+      }
+      )
+    )
+  )
+)
+
+```
+
+```{r echo=FALSE}
+# ESPACIO DE PRUEBAS
+barplot(head(tablafinal$`Engine power [bhp]`,10),xlab = "Engine Power")
+```
+
+
+
+
+
+
